@@ -18,6 +18,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/rlp"
 	"golang.org/x/crypto/sha3"
 )
 
@@ -32,6 +33,7 @@ func main() {
 	// generateWallet()
 	// createKs()
 	// importKs()
+	// fmt.Println(lc.LongestIncreasingSubsequence([]int{7, 7, 7, 7, 7, 7, 7}))
 }
 
 func connectServer(server string) *ethclient.Client {
@@ -333,4 +335,46 @@ func listenBlock(client *ethclient.Client) {
 			fmt.Println("number of transactions is", len(block.Transactions()))
 		}
 	}
+}
+func generateRawTransaction(client *ethclient.Client) {
+	chainId, err := client.ChainID(context.Background())
+	if err != nil {
+		log.Fatal(err)
+	}
+	address := common.HexToAddress("0x12312")
+	nonce, err := client.PendingNonceAt(context.Background(), address)
+	if err != nil {
+		log.Fatal(err)
+	}
+	value := big.NewInt(1000000000)
+	gasLimit := uint64(21000)
+	maxPriorityFeePerGas := big.NewInt(100000)
+	maxFeePerGas := big.NewInt(2000000)
+	// gasPrice, err := client.SuggestGasPrice(context.Background())
+	toAddress := common.HexToAddress("0x4592d8f8d7b001e72cb26a73e4fa1806a51ac79d")
+	var data []byte
+	lagecyTx := &types.DynamicFeeTx{
+		ChainID:   chainId,
+		Nonce:     nonce,
+		GasTipCap: maxPriorityFeePerGas, // priority fee
+		GasFeeCap: maxFeePerGas,         // max fee
+		Gas:       gasLimit,
+		To:        &toAddress,
+		Value:     value,
+		Data:      data,
+	}
+	rawTxBytes, err := lagecyTx.ChainID.MarshalText()
+	if err != nil {
+		panic(fmt.Sprintf("RLP encode fail %v\n", err))
+	}
+	tx := types.NewTx(lagecyTx)
+	fmt.Printf("raw transaction: 0x%x\n", rawTxBytes)
+	privateKey, err := crypto.HexToECDSA("0x1231231")
+	// generate signer
+	signer := types.LatestSignerForChainID(chainId)
+	// signature on raw transaction
+	signature, err := crypto.Sign(signer.Hash(tx).Bytes(), privateKey)
+	signedTx, err := tx.WithSignature(signer, signature)
+	fullRawTxBytes, err := rlp.EncodeToBytes(signedTx)
+	fmt.Println("raw transaction bytes:", hexutil.Encode(fullRawTxBytes))
 }

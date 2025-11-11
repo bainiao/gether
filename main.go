@@ -370,11 +370,20 @@ func generateRawTransaction(client *ethclient.Client) {
 	tx := types.NewTx(lagecyTx)
 	fmt.Printf("raw transaction: 0x%x\n", rawTxBytes)
 	privateKey, err := crypto.HexToECDSA("0x1231231")
+	if err != nil {
+		panic(fmt.Sprintf("private key err:", err))
+	}
 	// generate signer
 	signer := types.LatestSignerForChainID(chainId)
 	// signature on raw transaction
 	signature, err := crypto.Sign(signer.Hash(tx).Bytes(), privateKey)
+	if err != nil {
+		panic(fmt.Sprintf("sign err:", err))
+	}
 	signedTx, err := tx.WithSignature(signer, signature)
+	if err != nil {
+		panic(fmt.Sprintf("attach signature err:", err))
+	}
 	fullRawTxBytes, err := rlp.EncodeToBytes(signedTx)
 	fmt.Println("raw transaction bytes:", hexutil.Encode(fullRawTxBytes))
 }

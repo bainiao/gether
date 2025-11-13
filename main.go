@@ -10,6 +10,7 @@ import (
 	"math"
 	"math/big"
 	"os"
+	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
@@ -34,6 +35,7 @@ func main() {
 	// createKs()
 	// importKs()
 	// fmt.Println(lc.LongestIncreasingSubsequence([]int{7, 7, 7, 7, 7, 7, 7}))
+	generateWallet()
 }
 
 func connectServer(server string) *ethclient.Client {
@@ -52,7 +54,7 @@ func getBalance(client *ethclient.Client, address common.Address) {
 	}
 	fmt.Println("Balance is:", balance)
 	fbalance := new(big.Float)
-	fbalance.SetString(balance.String())
+	fbalance.SetInt(balance)
 	ethValue := new(big.Float).Quo(fbalance, big.NewFloat(math.Pow10(18)))
 	fmt.Println("eth value:", ethValue)
 	blockNum := big.NewInt(0)
@@ -206,7 +208,9 @@ func transferEth(client *ethclient.Client) {
 		log.Fatal(err)
 	}
 	publicKey := privateKey.PublicKey
-	chainId, err := client.ChainID(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	chainId, err := client.ChainID(ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -246,6 +250,12 @@ func transferEth(client *ethclient.Client) {
 }
 func transferToken(client *ethclient.Client) {
 	const erc20ABI = `[
+	{
+		"constant":true,
+		"inputs":[{"name":"_owner","type":"address"}],
+		"name":"balanceOf",
+		"outputs":[{"name":"","type":"uint256"}],
+		"type":"function"},
 	{
 		"constant": false,
 		"input": [
@@ -310,6 +320,13 @@ func transferToken(client *ethclient.Client) {
 		panic(fmt.Sprintf("broadcase tx fail: %v\n", err))
 	}
 	fmt.Printf("token transfer is broadcasted. address is %s\n", signedTx.Hash().Hex())
+	var balanceResult []byte
+	var balance *big.Int
+	err = parseABI.UnpackIntoInterface(&balance, "balanceOf", balanceResult)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("balance:", balance.String())
 }
 func listenBlock(client *ethclient.Client) {
 	defer client.Close()

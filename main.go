@@ -404,3 +404,35 @@ func generateRawTransaction(client *ethclient.Client) {
 	fullRawTxBytes, err := rlp.EncodeToBytes(signedTx)
 	fmt.Println("raw transaction bytes:", hexutil.Encode(fullRawTxBytes))
 }
+func signMessage() ([]byte, ecdsa.PublicKey) {
+	privateKey, err := crypto.HexToECDSA("0x1231231")
+	if err != nil {
+		panic(fmt.Errorf("private key err: %w\n", err))
+	}
+	data := []byte("hello world")
+	hash := crypto.Keccak256(data)
+	signature, err := crypto.Sign(hash, privateKey)
+	if err != nil {
+		panic(fmt.Errorf("sign data err: %w", err))
+	}
+	fmt.Println("your signature:", hexutil.Encode(signature))
+	return signature, privateKey.PublicKey
+}
+func verifySignature(signature []byte, pubKey ecdsa.PublicKey) {
+	sig := make([]byte, len(signature))
+	copy(sig, signature)
+	sig[crypto.RecoveryIDOffset] += 27
+	hash := crypto.Keccak256([]byte("hello world"))
+	recoverPubKey, err := crypto.SigToPub(hash, sig)
+	if err != nil {
+		panic(fmt.Errorf("recover public key err: %w", err))
+	}
+	if !bytes.Equal(crypto.FromECDSAPub(recoverPubKey), crypto.FromECDSAPub(&pubKey)) {
+		panic(fmt.Errorf("public key not match"))
+	}
+	recoverAddr := crypto.PubkeyToAddress(*recoverPubKey)
+	addr := crypto.PubkeyToAddress(pubKey)
+	if recoverAddr != addr {
+		panic(fmt.Errorf("address not match"))
+	}
+}

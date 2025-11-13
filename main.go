@@ -12,6 +12,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/common"
@@ -20,6 +21,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rlp"
+	hdwallet "github.com/miguelmota/go-ethereum-hdwallet"
 	"golang.org/x/crypto/sha3"
 )
 
@@ -435,4 +437,36 @@ func verifySignature(signature []byte, pubKey ecdsa.PublicKey) {
 	if recoverAddr != addr {
 		panic(fmt.Errorf("address not match"))
 	}
+}
+
+func multiAddress() {
+	mnemonic := "candy maple cake sugar pudding cream honey rich smooth crumble sweet treat"
+	wallet, err := hdwallet.NewFromMnemonic(mnemonic)
+	if err != nil {
+		panic(err)
+	}
+	path := hdwallet.MustParseDerivationPath("m/44'/60'/0'/0/0")
+	account, err := wallet.Derive(path, false)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("account one address: %s", account.Address.Hex())
+	path = hdwallet.MustParseDerivationPath("m/44'/60'/0'/0/1")
+	account, err = wallet.Derive(path, false)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("account two address: %s", account.Address.Hex())
+	nonce := uint64(0)
+	value := big.NewInt(100000000000000000)
+	toAddress := common.HexToAddress("0x123123123")
+	gasLimit := uint64(21000)
+	gasPrice := big.NewInt(1000000000)
+	var data []byte
+	tx := types.NewTransaction(nonce, toAddress, value, gasLimit, gasPrice, data)
+	signedTx, err := wallet.SignTx(account, tx, nil)
+	if err != nil {
+		panic(fmt.Errorf("sign tx err: %w", err))
+	}
+	spew.Dump(signedTx)
 }

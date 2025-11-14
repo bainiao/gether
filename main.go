@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/common"
@@ -35,9 +36,8 @@ func main() {
 	// getBalance(client, address)
 	// generateWallet()
 	// createKs()
-	// importKs()
+	importKs()
 	// fmt.Println(lc.LongestIncreasingSubsequence([]int{7, 7, 7, 7, 7, 7, 7}))
-	generateWallet()
 }
 
 func connectServer(server string) *ethclient.Client {
@@ -72,7 +72,8 @@ func getBalance(client *ethclient.Client, address common.Address) {
 	fmt.Println("Pending balance:", pendingBalance)
 }
 
-func generateWallet() {
+// 生成private key，public key
+func generatePK() {
 	privateKey, err := crypto.GenerateKey()
 	if err != nil {
 		log.Fatal(err)
@@ -97,11 +98,14 @@ func generateWallet() {
 func createKs() {
 	ks := keystore.NewKeyStore("./tmp", keystore.StandardScryptN, keystore.StandardScryptP)
 	password := "secret"
-	account, err := ks.NewAccount(password)
-	if err != nil {
-		log.Fatal(err)
+	for i := range 5 {
+		account, err := ks.NewAccount(password)
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Printf("%d account: %s\n", i, account.Address.Hex())
 	}
-	fmt.Println(account.Address.Hex())
+
 }
 func importKs() {
 	file := "./tmp/UTC--2025-11-11T00-38-17.452294200Z--552944736445f5c42c6e51be47d5e50869247498"
@@ -322,9 +326,20 @@ func transferToken(client *ethclient.Client) {
 		panic(fmt.Sprintf("broadcase tx fail: %v\n", err))
 	}
 	fmt.Printf("token transfer is broadcasted. address is %s\n", signedTx.Hash().Hex())
-	var balanceResult []byte
+	data, err = parseABI.Pack("balanceOf", fromAddress)
+	if err != nil {
+		panic(fmt.Errorf("pack balanceOf err: %w", err))
+	}
+	callMsg := ethereum.CallMsg{
+		To:   &contractAddress,
+		Data: data,
+	}
+	result, err := client.CallContract(context.Background(), callMsg, nil)
+	if err != nil {
+		panic(fmt.Errorf("call contract faild: %w", err))
+	}
 	var balance *big.Int
-	err = parseABI.UnpackIntoInterface(&balance, "balanceOf", balanceResult)
+	err = parseABI.UnpackIntoInterface(&balance, "balanceOf", result)
 	if err != nil {
 		panic(err)
 	}
@@ -384,32 +399,35 @@ func generateRawTransaction(client *ethclient.Client) {
 	}
 	rawTxBytes, err := lagecyTx.ChainID.MarshalText()
 	if err != nil {
-		panic(fmt.Sprintf("RLP encode fail %v\n", err))
+		panic(fmt.Errorf("RLP encode fail %w", err))
 	}
 	tx := types.NewTx(lagecyTx)
 	fmt.Printf("raw transaction: 0x%x\n", rawTxBytes)
 	privateKey, err := crypto.HexToECDSA("0x1231231")
 	if err != nil {
-		panic(fmt.Sprintf("private key err:", err))
+		panic(fmt.Errorf("private key err: %w", err))
 	}
 	// generate signer
 	signer := types.LatestSignerForChainID(chainId)
 	// signature on raw transaction
 	signature, err := crypto.Sign(signer.Hash(tx).Bytes(), privateKey)
 	if err != nil {
-		panic(fmt.Sprintf("sign err:", err))
+		panic(fmt.Errorf("sign err: %w", err))
 	}
 	signedTx, err := tx.WithSignature(signer, signature)
 	if err != nil {
-		panic(fmt.Sprintf("attach signature err:", err))
+		panic(fmt.Errorf("attach signature err: %w", err))
 	}
 	fullRawTxBytes, err := rlp.EncodeToBytes(signedTx)
+	if err != nil {
+		panic(fmt.Errorf("encode signTx fail: %w", err))
+	}
 	fmt.Println("raw transaction bytes:", hexutil.Encode(fullRawTxBytes))
 }
 func signMessage() ([]byte, ecdsa.PublicKey) {
 	privateKey, err := crypto.HexToECDSA("0x1231231")
 	if err != nil {
-		panic(fmt.Errorf("private key err: %w\n", err))
+		panic(fmt.Errorf("private key err: %w", err))
 	}
 	data := []byte("hello world")
 	hash := crypto.Keccak256(data)
@@ -439,6 +457,7 @@ func verifySignature(signature []byte, pubKey ecdsa.PublicKey) {
 	}
 }
 
+// generate multi pivateKey/address, sign transaction
 func multiAddress() {
 	mnemonic := "candy maple cake sugar pudding cream honey rich smooth crumble sweet treat"
 	wallet, err := hdwallet.NewFromMnemonic(mnemonic)
@@ -457,16 +476,48 @@ func multiAddress() {
 		panic(err)
 	}
 	fmt.Printf("account two address: %s", account.Address.Hex())
-	nonce := uint64(0)
+
+	privateKey, err := wallet.PrivateKey(account)
+	if err != nil {
+		panic(fmt.Errorf("%w", err))
+	}
+	privateKeyBytes := crypto.FromECDSA(privateKey)
+	fmt.Println("private key:", hexutil.Encode(privateKeyBytes))
+	client, err := ethclient.Dial("https://mainnet.infura.io/v3/你的API密钥")
+	if err != nil {
+		panic(fmt.Errorf("connect net failed"))
+	}
+	nonce, err := client.PendingNonceAt(context.Background(), account.Address)
+	if err != nil {
+		panic(fmt.Errorf("get nonce failed"))
+	}
 	value := big.NewInt(100000000000000000)
 	toAddress := common.HexToAddress("0x123123123")
 	gasLimit := uint64(21000)
-	gasPrice := big.NewInt(1000000000)
+	gasTipCap := big.NewInt(1000000000)
+	gasFeeCap := big.NewInt(3000000000)
+	chainID := big.NewInt(0)
 	var data []byte
-	tx := types.NewTransaction(nonce, toAddress, value, gasLimit, gasPrice, data)
-	signedTx, err := wallet.SignTx(account, tx, nil)
+	tx := types.NewTx(&types.DynamicFeeTx{
+		ChainID:   chainID,
+		Nonce:     nonce,
+		To:        &toAddress,
+		Data:      data,
+		GasTipCap: gasTipCap,
+		GasFeeCap: gasFeeCap,
+		Gas:       gasLimit,
+		Value:     value,
+	})
+	// tx := types.NewTransaction(nonce, toAddress, value, gasLimit, GasTipCap, data)
+	signedTx, err := wallet.SignTx(account, tx, chainID)
 	if err != nil {
 		panic(fmt.Errorf("sign tx err: %w", err))
 	}
 	spew.Dump(signedTx)
+
+	err = client.SendTransaction(context.Background(), signedTx)
+	if err != nil {
+		panic(fmt.Errorf("send transaction failed: %w", err))
+	}
+	fmt.Println("transaction is broadcasted.")
 }

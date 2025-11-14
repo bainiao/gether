@@ -6,6 +6,7 @@ import (
 	"crypto/ecdsa"
 	"encoding/json"
 	"fmt"
+	"gether/leetcode"
 	"log"
 	"math"
 	"math/big"
@@ -37,7 +38,8 @@ func main() {
 	// createKs()
 	// importKs()
 	// fmt.Println(lc.LongestIncreasingSubsequence([]int{7, 7, 7, 7, 7, 7, 7}))
-	generateWallet()
+	// generateWallet()
+	leetcode.ThreeSum([]int{-1, 0, 1, 2, -1, -4})
 }
 
 func connectServer(server string) *ethclient.Client {

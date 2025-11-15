@@ -10,6 +10,7 @@ import (
 	"math"
 	"math/big"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
@@ -38,6 +39,7 @@ func main() {
 	// createKs()
 	importKs()
 	// fmt.Println(lc.LongestIncreasingSubsequence([]int{7, 7, 7, 7, 7, 7, 7}))
+	generateWallet()
 }
 
 func connectServer(server string) *ethclient.Client {
@@ -457,7 +459,6 @@ func verifySignature(signature []byte, pubKey ecdsa.PublicKey) {
 	}
 }
 
-// generate multi pivateKey/address, sign transaction
 func multiAddress() {
 	mnemonic := "candy maple cake sugar pudding cream honey rich smooth crumble sweet treat"
 	wallet, err := hdwallet.NewFromMnemonic(mnemonic)
@@ -520,4 +521,116 @@ func multiAddress() {
 		panic(fmt.Errorf("send transaction failed: %w", err))
 	}
 	fmt.Println("transaction is broadcasted.")
+}
+func listenContractEvent(client *ethclient.Client) {
+	const contractABI = `[
+	{
+		"anonymous": false,
+		"inputs": [
+			{"indexed": true, "name": "from", "type": "address"},
+			{"indexed": true, "name": "to", "type": "address"},
+			{"indexed": false, "name": "value", "type": "uint256"}
+		],
+		"name": "Transfer",
+		"type": "event"
+	}
+	]`
+	contractAddress := common.HexToAddress("0x12312313")
+	client, err := ethclient.Dial("https://mainnet.infura.io/v3/123123123")
+	if err != nil {
+		panic(err)
+	}
+	defer client.Close()
+	parseABI, err := abi.JSON(strings.NewReader(contractABI))
+	if err != nil {
+		panic(err)
+	}
+	eventSignature := []byte("Transfer(address,address,uint256)")
+	query := ethereum.FilterQuery{
+		Addresses: []common.Address{contractAddress},
+		Topics:    [][]common.Hash{{common.BytesToHash(eventSignature)}},
+	}
+	logs := make(chan types.Log)
+	sub, err := client.SubscribeFilterLogs(context.TODO(), query, logs)
+	if err != nil {
+		panic(err)
+	}
+	defer sub.Unsubscribe()
+	for {
+		select {
+		case err := <-sub.Err():
+			panic(err)
+		case vLog := <-logs:
+			fmt.Println("event log:", vLog)
+			event := struct {
+				From  common.Address
+				To    common.Address
+				Value *big.Int
+			}{}
+			if err := parseABI.UnpackIntoInterface(&event, "Transfer", vLog.Data); err != nil {
+				panic(err)
+			}
+			fmt.Println("event block number:", vLog.BlockNumber)
+			fmt.Println("event tx hash:", vLog.TxHash.Hex())
+			fmt.Println("event tx index:", vLog.TxIndex)
+			fmt.Println("event index:", vLog.Index)
+			fmt.Println("event removed:", vLog.Removed)
+			fmt.Println("event from:", event.From.Hex())
+			fmt.Println("event to:", event.To.Hex())
+			fmt.Println("event value:", event.Value.String())
+		}
+	}
+}
+func readContractEventLog() {
+	const contractABI = `[
+	{
+		"anonymous": false,
+		"inputs": [
+			{"indexed": true, "name": "from", "type": "address"},
+			{"indexed": true, "name": "to", "type": "address"},
+			{"indexed": false, "name": "value", "type": "uint256"}
+		],
+		"name": "Transfer",
+		"type": "event"
+	}
+	]`
+	client, err := ethclient.Dial("https://mainnet.infura.io/v3/123123123")
+	if err != nil {
+		panic(err)
+	}
+	defer client.Close()
+	parseABI, err := abi.JSON(strings.NewReader(contractABI))
+	if err != nil {
+		panic(err)
+	}
+	contractAddress := common.HexToAddress("0x12312313")
+	eventSig := []byte("Transfer(address,address,uint256)")
+	eventHash := crypto.Keccak256Hash(eventSig)
+	query := ethereum.FilterQuery{
+		Addresses: []common.Address{contractAddress},
+		Topics:    [][]common.Hash{{eventHash}},
+		FromBlock: big.NewInt(0),
+		ToBlock:   nil,
+	}
+	logs, err := client.FilterLogs(context.Background(), query)
+	if err != nil {
+		panic(err)
+	}
+	for _, vLog := range logs {
+		fmt.Println("event log:", vLog)
+		event := struct {
+			From  common.Address
+			To    common.Address
+			Value *big.Int
+		}{}
+		err := parseABI.UnpackIntoInterface(&event, "Transfer", vLog.Data)
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println("event block number:", vLog.BlockNumber)
+		fmt.Println("event tx hash:", vLog.TxHash.Hex())
+		fmt.Println("event tx index:", vLog.TxIndex)
+		fmt.Println("event index:", vLog.Index)
+		fmt.Println("event removed:", vLog.Removed)
+	}
 }
